@@ -1,0 +1,44 @@
+# =============================================================================
+# deepstream-app の設定（テンプレート。03_run_deepstream.sh が生成する）
+# =============================================================================
+[application]
+enable-perf-measurement=1
+perf-measurement-interval-sec=5
+
+[tiled-display]
+enable=0
+
+@SOURCE_SECTION@
+
+[streammux]
+gpu-id=0
+live-source=@LIVE@
+batch-size=1
+batched-push-timeout=40000
+width=@MUX_WIDTH@
+height=@MUX_HEIGHT@
+enable-padding=0
+nvbuf-memory-type=0
+
+[primary-gie]
+enable=1
+gpu-id=0
+gie-unique-id=1
+nvbuf-memory-type=0
+config-file=@INFER_CONFIG@
+
+[osd]
+enable=1
+gpu-id=0
+border-width=2
+text-size=14
+text-color=1;1;1;1;
+text-bg-color=0.3;0.3;0.3;1
+font=Serif
+show-clock=0
+nvbuf-memory-type=0
+
+@SINK_SECTION@
+
+[tests]
+file-loop=0

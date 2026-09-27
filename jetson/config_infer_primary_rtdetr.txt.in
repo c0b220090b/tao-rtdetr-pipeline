@@ -1,0 +1,36 @@
+# =============================================================================
+# DeepStream nvinfer の設定（TAO RT-DETR 用）
+# このファイルはテンプレート。03_run_deepstream.sh が @...@ を埋めて
+# build/config_infer_primary_rtdetr.txt を生成する。
+# =============================================================================
+[property]
+gpu-id=0
+# 前処理: TAO RT-DETR は 0〜1 に正規化した RGB を入力にする（平均値は引かない）
+net-scale-factor=0.00392156862745098
+offsets=0;0;0
+model-color-format=0
+maintain-aspect-ratio=0
+
+onnx-file=@ONNX@
+model-engine-file=@ENGINE@
+labelfile-path=@LABELS@
+infer-dims=3;@HEIGHT@;@WIDTH@
+batch-size=1
+# 0=FP32, 1=INT8, 2=FP16
+network-mode=@NETWORK_MODE@
+network-type=0
+# labels.txt の行数（0 番の background を含む = dataset.num_classes と同じ）
+num-detected-classes=@NUM_CLASSES@
+interval=0
+gie-unique-id=1
+
+# 後処理: DETR 系は NMS 不要（cluster-mode=4 = クラスタリングなし）
+cluster-mode=4
+output-blob-names=pred_boxes;pred_logits
+parse-bbox-func-name=NvDsInferParseCustomDDETRTAO
+custom-lib-path=@PARSER_LIB@
+
+[class-attrs-all]
+# この値未満のスコアの検出は捨てる。誤検出が多ければ上げ、見逃しが多ければ下げる
+pre-cluster-threshold=@THRESHOLD@
+topk=20

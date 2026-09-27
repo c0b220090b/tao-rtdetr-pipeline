@@ -1,0 +1,23 @@
+# 秘密情報
+.env
+
+# 大きなファイル（データ・モデル・結果はgitに入れない）
+data/raw/*
+data/processed/*
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+models/*
+!models/.gitkeep
+results/*
+!results/.gitkeep
+.cache/
+
+# Jetson 側の生成物
+jetson/build/
+jetson/models/*
+!jetson/models/.gitkeep
+*.engine
+*.onnx
+
+__pycache__/
+*.pyc

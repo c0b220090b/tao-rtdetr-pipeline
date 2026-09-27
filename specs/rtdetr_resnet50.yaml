@@ -1,0 +1,101 @@
+# =============================================================================
+# TAO RT-DETR（ResNet50）の実験設定
+#
+# パスはすべてコンテナ内のもの（リポジトリ全体が /workspace にマウントされる）。
+# 実行時にスクリプトが次の値をコマンドラインで上書きする:
+#   results_dir, dataset.num_classes, 入力サイズ, エポック数, バッチサイズ, GPU 数,
+#   各コマンドの checkpoint
+# なので、普段いじるのは .env だけで OK。細かい調整をしたいときにこのファイルを編集する。
+#
+# 設定項目の詳細:
+#   https://docs.nvidia.com/tao/tao-toolkit/latest/text/cv_finetuning/pytorch/object_detection/rt_detr.html
+# =============================================================================
+results_dir: /workspace/results/default
+
+dataset:
+  train_data_sources:
+    - image_dir: /workspace/data/processed/images/train
+      json_file: /workspace/data/processed/annotations/train.json
+  val_data_sources:
+    image_dir: /workspace/data/processed/images/val
+    json_file: /workspace/data/processed/annotations/val.json
+  test_data_sources:
+    image_dir: /workspace/data/processed/images/val
+    json_file: /workspace/data/processed/annotations/val.json
+  infer_data_sources:
+    image_dir:
+      - /workspace/data/processed/images/val
+    classmap: /workspace/data/processed/classmap.txt
+  num_classes: 2                 # 実行時に data/processed/num_classes.txt の値で上書き
+  batch_size: 4                  # 1GPU あたり
+  workers: 8
+  remap_mscoco_category: false   # カスタムデータなので false（COCO 本体で学習するときだけ true）
+  dataset_type: serialized       # データを複数プロセスで共有してメモリを節約
+  augmentation:
+    multi_scales: [480, 512, 544, 576, 608, 640, 672, 704, 736, 768, 800]
+    train_spatial_size: [640, 640]
+    eval_spatial_size: [640, 640]
+    distortion_prob: 0.8
+    iou_crop_prob: 0.8
+    preserve_aspect_ratio: false
+
+model:
+  backbone: resnet_50            # 事前学習モデルと合わせる。Jetson の FP16 でも安定
+  train_backbone: true
+  num_queries: 300
+  num_select: 300
+  num_feature_levels: 3
+  return_interm_indices: [1, 2, 3]
+  feat_strides: [8, 16, 32]
+  feat_channels: [256, 256, 256]
+  hidden_dim: 256
+  enc_layers: 1
+  dec_layers: 6
+
+train:
+  num_gpus: 1                    # 実行時に GPU_IDS から上書き
+  gpu_ids: [0]
+  num_nodes: 1
+  num_epochs: 72
+  checkpoint_interval: 5
+  validation_interval: 1
+  seed: 1234
+  precision: bf16                # RTX 30 系（Ampere）以降は bf16 が使える。古い GPU なら fp32
+  distributed_strategy: ddp
+  activation_checkpoint: true
+  enable_ema: true
+  clip_grad_norm: 0.1
+  optim:
+    optimizer: AdamW
+    lr: 0.0001
+    lr_backbone: 0.00001
+    momentum: 0.9
+    weight_decay: 0.0001
+    lr_scheduler: MultiStep
+    lr_decay: 0.1
+    lr_steps: [60]               # この epoch で学習率を 1/10 にする
+    warmup_steps: 0
+
+evaluate:
+  checkpoint: "???"
+  conf_threshold: 0.0
+  input_width: 640
+  input_height: 640
+
+inference:
+  checkpoint: "???"
+  conf_threshold: 0.5
+  input_width: 640
+  input_height: 640
+  outline_width: 3
+
+export:
+  checkpoint: "???"
+  onnx_file: "???"
+  on_cpu: false
+  opset_version: 17
+  input_channel: 3
+  input_width: 640
+  input_height: 640
+  batch_size: -1                 # 動的バッチ
+  serialize_nvdsinfer: true      # DeepStream 用の設定ファイルと labels.txt も書き出す
