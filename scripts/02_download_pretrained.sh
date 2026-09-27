@@ -17,11 +17,14 @@ source "$(dirname "$0")/common.sh"
 if ! command -v ngc >/dev/null 2>&1; then
   error "ngc コマンドがありません。次の手順でインストールしてください:"
   cat <<'EOF'
-    wget --content-disposition https://api.ngc.nvidia.com/v2/resources/nvidia/ngc-apps/ngc_cli/versions/latest/files/ngccli_linux.zip -O ngccli_linux.zip
-    unzip ngccli_linux.zip
-    chmod u+x ngc-cli/ngc
-    echo "export PATH=\"\$PATH:$(pwd)/ngc-cli\"" >> ~/.bashrc && source ~/.bashrc
-    ngc config set     # API キーを入力（org は nvidia を選択）
+    cd ~
+NGC_CLI_VER=4.36.6
+wget --content-disposition "https://api.ngc.nvidia.com/v2/resources/nvidia/ngc-apps/ngc_cli/versions/${NGC_CLI_VER}/files/ngccli_linux.zip" -O ngccli_linux.zip
+unzip -o ngccli_linux.zip -d ~/ngc
+chmod u+x ~/ngc/ngc-cli/ngc
+echo 'export PATH="$PATH:$HOME/ngc/ngc-cli"' >> ~/.bashrc && source ~/.bashrc
+ngc --version
+ngc config set     # APIキー（.envのNGC_KEYと同じ）を入力。orgはnvidiaを選ぶ
 EOF
   exit 1
 fi
