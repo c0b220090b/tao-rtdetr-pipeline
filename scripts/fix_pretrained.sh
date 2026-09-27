@@ -4,21 +4,28 @@
 # 使い方:
 #   ./scripts/fix_pretrained.sh models/trafficcamnet_transformer_lite_vtrainable_resnet50_v2.0/resnet50_trafficcamnet_rtdetr.pth
 #
-# 出力: 同じフォルダに <元の名前>_fixed.pth
+#   ./scripts/fix_pretrained.sh --reinit-class-head <.pth>   # クラス判定の層を初期化し直す
+#
+# 出力: 同じフォルダに <元の名前>_fixed.pth（--reinit-class-head のときは _fixed_newhead.pth）
 # そのあと .env の PRETRAINED_MODEL に /workspace/... の形で出力ファイルを指定して訓練する。
 source "$(dirname "$0")/common.sh"
 
+OPT=()
+SUFFIX=_fixed
+if [[ "${1:-}" == --reinit-class-head ]]; then
+  OPT=(--reinit-class-head); SUFFIX=_fixed_newhead; shift
+fi
 SRC="${1:-}"
 [[ -n "$SRC" && -f "$SRC" ]] || { error "入力の .pth を指定してください（リポジトリ内のパス）"; exit 1; }
 SRC_ABS="$(readlink -f "$SRC")"
 [[ "$SRC_ABS" == "$REPO_DIR"/* ]] || { error "リポジトリ内のファイルを指定してください（コンテナから見えないため）"; exit 1; }
 
-DST_ABS="${SRC_ABS%.pth}_fixed.pth"
+DST_ABS="${SRC_ABS%.pth}${SUFFIX}.pth"
 SRC_WS="${SRC_ABS/#$REPO_DIR/$WS}"
 DST_WS="${DST_ABS/#$REPO_DIR/$WS}"
 
 docker run --rm -v "$REPO_DIR:$WS" -w "$WS" --entrypoint python "$TAO_IMAGE" \
-  "$WS/tools/fix_pretrained_keys.py" "$SRC_WS" "$DST_WS"
+  "$WS/tools/fix_pretrained_keys.py" "${OPT[@]}" "$SRC_WS" "$DST_WS"
 
 # 所有者を実行ユーザーに戻す
 docker run --rm -v "$(dirname "$DST_ABS"):/d" --entrypoint chown "$TAO_IMAGE" \

@@ -19,8 +19,12 @@
   "module." を付けて保存する。rtdetr_parser の最初の規則で "module." だけが削られ、
   すべてのキーが正しい名前になる。
 
+オプション --reinit-class-head:
+  クラス判定の層（dec_score_head / enc_score_head / denoising_class_embed）を保存しない。
+  TAO はこれらを初期化し直して学習する（事前学習とクラスの意味が違うときに使う）。
+
 使い方（torch が必要なので TAO コンテナの中で実行する。scripts/fix_pretrained.sh 経由が簡単）:
-  python3 tools/fix_pretrained_keys.py <入力.pth> <出力.pth>
+  python3 tools/fix_pretrained_keys.py [--reinit-class-head] <入力.pth> <出力.pth>
 """
 from __future__ import annotations
 
@@ -46,15 +50,25 @@ def fix_keys(keys: list[str]) -> dict[str, str]:
     return mapping
 
 
+CLASS_HEAD_PATTERNS = ("dec_score_head.", "enc_score_head.", "denoising_class_embed.")
+
+
+def is_class_head(k: str) -> bool:
+    return any(p in k for p in CLASS_HEAD_PATTERNS)
+
+
 def prefix_summary(keys) -> Counter:
     """キーの先頭 2 階層ごとの件数（確認用）"""
     return Counter(".".join(k.split(".")[:2]) for k in keys)
 
 
 def main():
-    if len(sys.argv) != 3:
+    args = sys.argv[1:]
+    reinit = "--reinit-class-head" in args
+    args = [a for a in args if a != "--reinit-class-head"]
+    if len(args) != 2:
         sys.exit(__doc__)
-    src, dst = sys.argv[1], sys.argv[2]
+    src, dst = args
 
     import torch
     ck = torch.load(src, map_location="cpu", weights_only=False)
@@ -63,6 +77,13 @@ def main():
     if "tao_model" in ck:
         print("[WARN] tao_model 付きのチェックポイントです。TAO は別の読み込み経路を使うので、この変換は不要かもしれません")
     sd = ck.get("state_dict", ck.get("model", ck))
+
+    if reinit:
+        dropped = [k for k in sd if is_class_head(k)]
+        sd = type(sd)((k, v) for k, v in sd.items() if not is_class_head(k))
+        print(f"クラス判定の層を {len(dropped)} 個取り除きました（TAO が初期化し直します）")
+        if not dropped:
+            sys.exit("クラス判定の層が見つかりませんでした")
 
     keys = list(sd.keys())
     mapping = fix_keys(keys)

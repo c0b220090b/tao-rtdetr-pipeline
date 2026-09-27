@@ -112,6 +112,18 @@ tmux new -s tao                     # SSH が切れても止まらないよう�
 
 GPU の様子は別のターミナルで `watch -n 1 nvidia-smi` で確認できます。
 
+### 転移学習の方法を選ぶ
+
+| やり方 | コマンド | 向いているとき |
+|---|---|---|
+| 全体を学習（既定） | `./scripts/10_train.sh` | データが数千枚以上ある |
+| クラス判定の層だけ作り直して全体を学習 | `./scripts/fix_pretrained.sh --reinit-class-head <.pth>` で作った `_fixed_newhead.pth` を `PRETRAINED_MODEL` に | 事前学習とクラスが違う（ほとんどの場合） |
+| クラス判定の層だけ学習（他は固定） | `./scripts/10_train.sh "$(./scripts/freeze_presets.sh head_only)"` | データが少ない・事前学習と似た物体 |
+| 枠の層も含めて頭だけ学習 | `./scripts/10_train.sh "$(./scripts/freeze_presets.sh heads)"` | 上より少し柔軟にしたい |
+
+固定した部品は `results/<実験名>/train/status.json` に `Freezed module [...]` と記録されます。
+2 段階（頭だけ数エポック → できたチェックポイントを `PRETRAINED_MODEL` にして全体を学習）にすると、安定しやすくなります。
+
 ## 5. 評価・目視確認
 
 ```bash
