@@ -23,7 +23,7 @@ Jetson Orin Nano の **DeepStream** で高速に推論するまでの手順と�
 |---|---|---|
 | GPU | Volta 以降・VRAM 16GB 以上（推奨 24GB） | RTX 3090 ×2 で OK |
 | NVIDIA ドライバー | **TAO 7.x は 595.45.04 以上** / TAO 6.26.x は 580 以上 | 550 では動かない |
-| NVIDIA Container Toolkit | 1.19.0 以上 | |
+| NVIDIA Container Toolkit | TAO 7.x は 1.19.0 以上 | 6.26.x は古めでも動く |
 | Docker | 24 以上 | |
 | ディスク | 100GB 以上の空き | コンテナだけで 20GB 以上 |
 | NGC アカウント | API キー | https://ngc.nvidia.com で無料登録 |

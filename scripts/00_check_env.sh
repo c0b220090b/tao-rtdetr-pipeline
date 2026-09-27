@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 訓練サーバーの環境が TAO の要件を満たしているか確認する
 #   - NVIDIA ドライバー（TAO 7.x は 595.45.04 以上、6.26.x は 580 以上）
-#   - NVIDIA Container Toolkit 1.19.0 以上
+#   - NVIDIA Container Toolkit（TAO 7.x は 1.19.0 以上）
 #   - Docker 24 以上
 #   - GPU のメモリ 16GB 以上（推奨 24GB）
 source "$(dirname "$0")/common.sh"
@@ -14,9 +14,8 @@ version_ge() {  # version_ge 現在 必要  → 現在 >= 必要 なら真
 
 # 使うコンテナのタグから、必要なドライバーを決める
 case "$TAO_IMAGE" in
-  *:7.*) REQ_DRIVER="595.45.04" ;;
-  *:6.*) REQ_DRIVER="580.0" ;;
-  *)     REQ_DRIVER="580.0" ;;
+  *:7.*) REQ_DRIVER="595.45.04"; CTK_STRICT=1 ;;
+  *)     REQ_DRIVER="580.0";     CTK_STRICT=0 ;;   # 6.26.x（CUDA 13.0）
 esac
 info "使用するコンテナ: $TAO_IMAGE（必要なドライバー: $REQ_DRIVER 以上）"
 
@@ -48,9 +47,11 @@ done
 if CTK="$(nvidia-ctk --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)"; then
   if version_ge "$CTK" "1.19.0"; then
     ok "NVIDIA Container Toolkit: $CTK"
-  else
-    error "NVIDIA Container Toolkit $CTK は古すぎます（1.19.0 以上が必要）"
+  elif (( CTK_STRICT )); then
+    error "NVIDIA Container Toolkit $CTK は古すぎます（TAO 7.x は 1.19.0 以上が必要）"
     failed=1
+  else
+    warn "NVIDIA Container Toolkit $CTK（1.19.0 以上を推奨。下の「コンテナから GPU」が OK なら動作はします）"
   fi
 else
   error "nvidia-ctk が見つかりません"
@@ -91,5 +92,8 @@ if (( failed == 0 )); then
   ok "環境チェック完了。次は scripts/01_setup_ngc.sh"
 else
   error "要件を満たしていない項目があります"
+  case "$TAO_IMAGE" in
+    *:7.*) info "ドライバーを 595 以上にできない場合は、.env で TAO_IMAGE=nvcr.io/nvidia/tao/tao-toolkit:6.26.3-pyt にすると、ドライバー 580 以上で動きます" ;;
+  esac
   exit 1
 fi
