@@ -23,11 +23,17 @@ args=(
   "dataset.batch_size=$BATCH_SIZE"
 )
 
+if [[ -n "$PRETRAINED_MODEL" && -n "$PRETRAINED_BACKBONE" ]]; then
+  warn "PRETRAINED_MODEL と PRETRAINED_BACKBONE の両方が指定されています。TAO は PRETRAINED_BACKBONE を無視します"
+fi
 if [[ -n "$PRETRAINED_MODEL" ]]; then
   args+=("train.pretrained_model_path=$PRETRAINED_MODEL")
-  info "事前学習モデルから開始: $PRETRAINED_MODEL"
+  info "事前学習モデル（検出器全体）から開始: $PRETRAINED_MODEL"
+elif [[ -n "$PRETRAINED_BACKBONE" ]]; then
+  args+=("model.pretrained_backbone_path=$PRETRAINED_BACKBONE")
+  info "事前学習バックボーンから開始: $PRETRAINED_BACKBONE"
 else
-  warn "PRETRAINED_MODEL が空です。ゼロから学習するので精度が出にくくなります"
+  warn "事前学習の重みが指定されていません。ゼロから学習するので精度が出にくくなります"
 fi
 
 if (( resume )); then
@@ -45,8 +51,17 @@ mkdir -p "$RESULTS_HOST"
   echo "args: $(common_overrides) ${args[*]} ${extra[*]:-}"
 } >> "$RESULTS_HOST/run_history.txt"
 
+TRAIN_LOG="$RESULTS_HOST/train_console_$(date +%Y%m%d-%H%M%S).log"
+info "画面出力の保存先: $TRAIN_LOG"
 # shellcheck disable=SC2046
-tao_run rtdetr train -e "$SPEC" $(common_overrides) "${args[@]}" "${extra[@]}"
+TAO_LOG="$TRAIN_LOG" tao_run rtdetr train -e "$SPEC" $(common_overrides) "${args[@]}" "${extra[@]}"
+
+# 事前学習の重みがちゃんと読み込まれたか確認する
+STATUS="$RESULTS_HOST/train/status.json"
+if [[ -f "$STATUS" ]] && grep -q "missing_keys=\['model.backbone" "$STATUS"; then
+  warn "事前学習の重みのうち、バックボーンが読み込まれていません（status.json の missing_keys を参照）"
+  warn "→ .env で PRETRAINED_MODEL を空にし、PRETRAINED_BACKBONE にバックボーンだけの .pth を指定して再訓練してください"
+fi
 
 ok "訓練完了: $RESULTS_HOST/train"
 info "次は ./scripts/20_evaluate.sh"

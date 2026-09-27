@@ -29,6 +29,7 @@ BATCH_SIZE="${BATCH_SIZE:-4}"
 INPUT_WIDTH="${INPUT_WIDTH:-640}"
 INPUT_HEIGHT="${INPUT_HEIGHT:-640}"
 PRETRAINED_MODEL="${PRETRAINED_MODEL:-}"
+PRETRAINED_BACKBONE="${PRETRAINED_BACKBONE:-}"
 
 # コンテナ内のパス（リポジトリ全体を /workspace にマウントする）
 WS=/workspace
@@ -80,6 +81,8 @@ tao_run() {
   [[ -t 1 ]] && tty_flag=(-it)
 
   info "実行: $*"
+  # TAO_LOG が指定されていれば、画面出力をファイルにも保存する
+  local log="${TAO_LOG:-/dev/null}"
   docker run --rm "${tty_flag[@]}" \
     --gpus "\"device=$GPU_IDS\"" \
     --ipc=host \
@@ -88,7 +91,7 @@ tao_run() {
     -w "$WS" \
     -e HOME="$WS/.cache/home" \
     "$TAO_IMAGE" \
-    "$@" || rc=$?
+    "$@" 2>&1 | tee -a "$log" || rc=$?
 
   # コンテナは root で動くので、生成物の所有者を実行ユーザーに戻す
   docker run --rm -v "$REPO_DIR/results:/r" -v "$REPO_DIR/.cache:/c" --entrypoint chown \
