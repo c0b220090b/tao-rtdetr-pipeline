@@ -197,6 +197,7 @@ sudo nvpmodel -m 2 && sudo jetson_clocks     # 性能モードを最大に
 | `unauthorized` でコンテナが取れない | `NGC_KEY` を確認して `./scripts/01_setup_ngc.sh` をやり直す |
 | `CUDA out of memory` | `.env` の `BATCH_SIZE` を下げる（4 → 2） |
 | DataLoader が `shared memory` でエラー | コンテナは `--ipc=host` で起動済み。`dataset.workers=4` に下げる |
+| 訓練後に「バックボーンが読み込まれていません」と出る / 1 エポック目の val mAP がほぼ 0 | 事前学習の重みとキー名がずれている。`./scripts/fix_pretrained.sh <.pth>` で付け替えた `_fixed.pth` を `PRETRAINED_MODEL` に指定 |
 | 精度が上がらない | 事前学習モデルを使っているか確認。データ量（1 クラス数百ボックス以上が目安）とエポック数を増やす |
 | `num_classes` の不一致エラー | データを入れ替えたら `03_prepare_dataset.py` をやり直す（`num_classes.txt` が更新される） |
 | Jetson で FP16 だと検出が出ない / NaN | `./02_build_engine.sh --fp32` と `./03_run_deepstream.sh ... --fp32` で FP32 にする。ResNet 以外の backbone（ConvNeXt 系）は FP16 で不安定になりやすい |

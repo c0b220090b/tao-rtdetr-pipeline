@@ -60,7 +60,7 @@ TAO_LOG="$TRAIN_LOG" tao_run rtdetr train -e "$SPEC" $(common_overrides) "${args
 STATUS="$RESULTS_HOST/train/status.json"
 if [[ -f "$STATUS" ]] && grep -q "missing_keys=\['model.backbone" "$STATUS"; then
   warn "事前学習の重みのうち、バックボーンが読み込まれていません（status.json の missing_keys を参照）"
-  warn "→ .env で PRETRAINED_MODEL を空にし、PRETRAINED_BACKBONE にバックボーンだけの .pth を指定して再訓練してください"
+  warn "→ ./scripts/fix_pretrained.sh <事前学習の.pth> でキー名を付け替え、できた _fixed.pth を PRETRAINED_MODEL にして再訓練してください"
 fi
 
 ok "訓練完了: $RESULTS_HOST/train"
