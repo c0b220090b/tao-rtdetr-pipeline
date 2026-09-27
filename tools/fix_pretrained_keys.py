@@ -1,16 +1,23 @@
 #!/usr/bin/env python3
 """
-事前学習済みの RT-DETR チェックポイントの「重みの名前（キー）」を、今の TAO が期待する形に揃える。
+事前学習済みの RT-DETR チェックポイントを、TAO が正しく読み込める「キー名」に作り直す。
 
-背景:
-  TrafficCamNet Transformer Lite（trainable_resnet50_v2.0）の resnet50_trafficcamnet_rtdetr.pth は、
-  バックボーンのキーが "model.model.backbone.conv1.weight" のように "model." が 2 重になっている。
-  TAO 6.26.3 は "model.backbone.conv1.weight" を探すため一致せず、ResNet50 部分が読み込まれない
-  （status.json に missing_keys=['model.backbone....'] と出る）。
+背景（TAO 6.26.3 で確認）:
+  train.pretrained_model_path の重みは、TAO の rtdetr_parser でキー名が変換されてから読み込まれる。
+  rtdetr_parser には次の規則がある（nvidia_tao_pytorch/cv/rtdetr/model/utils.py）:
+      "module" を含むキー         → 先頭の 1 階層を削る
+      "model.model.backbone." で始まる → その前置きを丸ごと削る（バックボーン単体のファイル向け）
+      "model." で始まる            → "model." を 1 つ削る
+  TrafficCamNet Transformer Lite の resnet50_trafficcamnet_rtdetr.pth はすべてのキーが
+  "model.model." で始まるため、
+      model.model.encoder.x        → model.encoder.x        （一致する）
+      model.model.backbone.conv1.w → conv1.w                （一致しない → ResNet50 が読み込まれない）
+  となる。
 
 やること:
-  エンコーダー（".encoder."）のキーの前置き（例: "model."）を基準にして、
-  バックボーンのキーの前置きを同じ形に付け替える。その他のキーはそのまま。
+  TAO が探しているキー（model.backbone.* / model.encoder.* / model.decoder.*）の頭に
+  "module." を付けて保存する。rtdetr_parser の最初の規則で "module." だけが削られ、
+  すべてのキーが正しい名前になる。
 
 使い方（torch が必要なので TAO コンテナの中で実行する。scripts/fix_pretrained.sh 経由が簡単）:
   python3 tools/fix_pretrained_keys.py <入力.pth> <出力.pth>
@@ -21,29 +28,27 @@ import sys
 from collections import Counter
 
 
-def fix_keys(keys: list[str]) -> dict[str, str]:
-    """{元のキー: 新しいキー} を返す（変わらないキーも含む）。"""
-    enc = next((k for k in keys if ".encoder." in k or k.startswith("encoder.")), None)
-    if enc is None:
-        raise SystemExit("エンコーダーのキー（.encoder.）が見つかりません。RT-DETR のチェックポイントか確認してください")
-    ref_prefix = enc[: enc.index("encoder.")]          # 例: "model."
+def target_key(k: str) -> str:
+    """元のキー → TAO が探しているキー（model.backbone.* など）"""
+    while k.startswith("model.model."):
+        k = k[len("model."):]
+    if k.startswith("module."):
+        k = k[len("module."):]
+    return k
 
-    mapping = {}
-    for k in keys:
-        if "backbone." in k:
-            new = ref_prefix + k[k.index("backbone."):]  # 例: "model.model.backbone.x" → "model.backbone.x"
-        else:
-            new = k
-        mapping[k] = new
+
+def fix_keys(keys: list[str]) -> dict[str, str]:
+    """{元のキー: 保存するキー} を返す。保存するキーは rtdetr_parser を通ると target_key になる。"""
+    mapping = {k: "module." + target_key(k) for k in keys}
     dup = [k for k, n in Counter(mapping.values()).items() if n > 1]
     if dup:
-        raise SystemExit(f"付け替え後にキーが重複します（例: {dup[:3]}）。手動で確認してください")
+        raise SystemExit(f"作り直したキーが重複します（例: {dup[:3]}）。手動で確認してください")
     return mapping
 
 
 def prefix_summary(keys) -> Counter:
     """キーの先頭 2 階層ごとの件数（確認用）"""
-    return Counter(".".join(k.split(".")[:3]) for k in keys)
+    return Counter(".".join(k.split(".")[:2]) for k in keys)
 
 
 def main():
@@ -53,36 +58,31 @@ def main():
 
     import torch
     ck = torch.load(src, map_location="cpu", weights_only=False)
-    has_sd = isinstance(ck, dict) and "state_dict" in ck
-    sd = ck["state_dict"] if has_sd else ck
+    if not isinstance(ck, dict):
+        sys.exit("想定外のファイル形式です")
+    if "tao_model" in ck:
+        print("[WARN] tao_model 付きのチェックポイントです。TAO は別の読み込み経路を使うので、この変換は不要かもしれません")
+    sd = ck.get("state_dict", ck.get("model", ck))
 
     keys = list(sd.keys())
     mapping = fix_keys(keys)
-    changed = sum(1 for k, v in mapping.items() if k != v)
+    targets = [target_key(k) for k in keys]
 
-    print(f"キーの数: {len(keys)}  /  付け替え: {changed}")
-    if changed == 0:
-        enc = next(k for k in keys if "encoder." in k)
-        bb = next((k for k in keys if "backbone." in k), "(なし)")
-        sys.exit(f"付け替えるキーがありませんでした（エンコーダー例: {enc} / バックボーン例: {bb}）。"
-                 "バックボーンとエンコーダーの前置きが同じなので、別の原因です")
-    print("付け替えの例:")
-    for k, v in list(mapping.items()):
-        if k != v:
-            print(f"  {k}\n    → {v}")
-            break
+    print(f"キーの数: {len(keys)}")
+    print("変換の例:")
+    shown = set()
+    for k in keys:
+        part = target_key(k).split(".")[1] if "." in target_key(k) else k
+        if part in shown:
+            continue
+        shown.add(part)
+        print(f"  {k}\n    → 保存: {mapping[k]}\n    → TAO 読み込み後: {target_key(k)}")
+    print("\nTAO が読み込んだあとの構成（先頭 2 階層: 件数）:")
+    for p, n in sorted(prefix_summary(targets).items()):
+        print(f"  {p:<30s} {n}")
+
     new_sd = type(sd)((mapping[k], v) for k, v in sd.items())
-
-    print("\n付け替え後の構成（先頭 3 階層: 件数）:")
-    for p, n in sorted(prefix_summary(new_sd.keys()).items()):
-        print(f"  {p:<45s} {n}")
-
-    if has_sd:
-        ck = dict(ck)
-        ck["state_dict"] = new_sd
-    else:
-        ck = new_sd
-    torch.save(ck, dst)
+    torch.save({"state_dict": new_sd}, dst)
     print(f"\n保存しました: {dst}")
 
 
