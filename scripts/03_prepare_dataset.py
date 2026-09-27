@@ -14,6 +14,9 @@
   (B) COCO 形式で train / val が分かれている
       python3 scripts/03_prepare_dataset.py coco --json train.json --images train_imgs/ \\
           --val-json val.json --val-images val_imgs/
+  (A') COCO 形式から一部のクラス・枚数だけ使う（お試し用）
+      python3 scripts/03_prepare_dataset.py --classes person,car,bicycle --max-images 2000 \
+          coco --json instances_val2017.json --images val2017/
   (C) YOLO 形式（images/ と labels/、クラス名は classes.txt か data.yaml）
       python3 scripts/03_prepare_dataset.py yolo --root yolo_dataset/ --names classes.txt
 
@@ -175,6 +178,24 @@ def load_coco(json_path: Path, image_root: Path):
     return cats, images
 
 
+def filter_classes(cats, images, wanted: list[str] | None, max_images: int | None, seed: int):
+    """--classes で指定したクラスだけ残し、そのクラスが写っている画像に絞る。
+    --max-images で枚数の上限をかける（ランダムに選ぶ）。"""
+    if wanted:
+        names = {c["name"]: c for c in cats}
+        missing = [w for w in wanted if w not in names]
+        if missing:
+            sys.exit(f"指定したクラスがデータにありません: {missing}\n使えるクラス: {sorted(names)}")
+        cats = [names[w] for w in wanted]          # 指定した順番がクラス ID の順番になる
+        keep_ids = {c["id"] for c in cats}
+        images = [(im, p, [a for a in anns if a["category_id"] in keep_ids]) for im, p, anns in images]
+        images = [x for x in images if x[2]]       # 対象クラスが 1 つも無い画像は除く
+    if max_images and len(images) > max_images:
+        rng = random.Random(seed)
+        images = rng.sample(images, max_images)
+    return cats, images
+
+
 def run_coco(args, out_dir: Path):
     cats, train_imgs = load_coco(Path(args.json), Path(args.images))
     val_imgs = None
@@ -182,6 +203,11 @@ def run_coco(args, out_dir: Path):
         vcats, val_imgs = load_coco(Path(args.val_json), Path(args.val_images))
         if [c["name"] for c in vcats] != [c["name"] for c in cats]:
             sys.exit("train と val でクラス（categories）が一致しません")
+    wanted = [c.strip() for c in args.classes.split(",")] if args.classes else None
+    all_cats = cats
+    cats, train_imgs = filter_classes(all_cats, train_imgs, wanted, args.max_images, args.seed)
+    if val_imgs is not None:
+        _, val_imgs = filter_classes(all_cats, val_imgs, wanted, None, args.seed)
 
     names = [c["name"] for c in cats]
     old2new = {c["id"]: i for i, c in enumerate(cats)}  # 0 始まりに（Builder が +1 する）
@@ -273,6 +299,8 @@ def main():
     ap.add_argument("--out", default=str(REPO_DIR / "data" / "processed"), help="出力先")
     ap.add_argument("--val-ratio", type=float, default=0.1, help="val に回す割合（分割済みなら無視）")
     ap.add_argument("--seed", type=int, default=42)
+    ap.add_argument("--classes", help="COCO 入力のみ: 使うクラス名をカンマ区切りで（例: person,car）")
+    ap.add_argument("--max-images", type=int, help="COCO 入力のみ: 使う画像の最大枚数（お試し用）")
     sub = ap.add_subparsers(dest="fmt", required=True)
 
     c = sub.add_parser("coco")
