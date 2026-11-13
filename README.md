@@ -166,6 +166,39 @@ sudo nvpmodel -m 2 && sudo jetson_clocks     # 性能モードを最大に
 
 5 秒ごとに `**PERF:` として FPS が表示されます。
 
+## 8. 別のデータで試す（例）
+
+### 顔検出（WIDER FACE）
+
+```bash
+./scripts/sample_download_widerface.sh       # 約 1.8GB（研究・非商用のみ）
+TAO_PY="docker run --rm -u $(id -u):$(id -g) -v $PWD:/workspace -w /workspace --entrypoint python3 $(grep ^TAO_IMAGE .env | cut -d= -f2)"
+$TAO_PY scripts/widerface_to_coco.py --root data/raw/widerface      # 10px 未満の顔・群衆写真を除外
+$TAO_PY scripts/03_prepare_dataset.py coco \
+  --json data/raw/widerface/train_coco.json --images data/raw/widerface/WIDER_train/images \
+  --val-json data/raw/widerface/val_coco.json --val-images data/raw/widerface/WIDER_val/images
+```
+
+ホストの `python3` に Pillow が入っていない場合も、上のように TAO コンテナの Python で実行できます。
+
+### 合成データ（Isaac Sim）でハンドパレット検出 → 実画像（LOCO）で評価
+
+```bash
+./sdg/run_palletjack_sdg.sh 30               # お試し。Isaac Sim 4.2.0 コンテナで NVIDIA 公式の生成スクリプトを実行
+./sdg/run_palletjack_sdg.sh 2000             # 本番（5000 枚、KITTI 形式）
+$TAO_PY scripts/kitti_to_coco.py --root data/raw/palletjack_sdg --out data/raw/palletjack_sdg/synth_coco.json
+# LOCO: git clone https://github.com/tum-fml/loco data/raw/loco ＋ 画像を data/raw/loco/images に展開
+$TAO_PY scripts/loco_to_coco.py --json data/raw/loco/rgb/loco-all-v1.json --images data/raw/loco/images \
+  --out data/raw/loco/palletjack_val.json
+$TAO_PY scripts/03_prepare_dataset.py coco \
+  --json data/raw/palletjack_sdg/synth_coco.json --images data/raw/palletjack_sdg \
+  --val-json data/raw/loco/palletjack_val.json --val-images data/raw/loco/images
+```
+
+訓練は合成データだけ、検証は実画像だけなので、訓練中の val mAP がそのまま「実画像での精度」になります。
+
+> **注意**: データを変換し直すと `data/processed/` が丸ごと入れ替わります。訓練中に変換すると、動いている訓練が画像を見失って止まります。
+
 ---
 
 ## ディレクトリ構成
@@ -183,7 +216,12 @@ sudo nvpmodel -m 2 && sudo jetson_clocks     # 性能モードを最大に
 │   ├── 10_train.sh
 │   ├── 20_evaluate.sh
 │   ├── 30_inference.sh
-│   └── 40_export.sh
+│   ├── 40_export.sh
+│   ├── sample_download_coco.sh / sample_download_widerface.sh   # お試し用データの取得
+│   ├── widerface_to_coco.py  # WIDER FACE → COCO
+│   ├── kitti_to_coco.py      # KITTI（Isaac Sim の出力など）→ COCO
+│   └── loco_to_coco.py       # LOCO（実画像の倉庫データ）からハンドパレットを抽出
+├── sdg/run_palletjack_sdg.sh # Isaac Sim で合成データを生成
 ├── tools/update_nvidia.sh     # ドライバー・Container Toolkit の更新
 ├── jetson/
 │   ├── 01_build_parser.sh    # DeepStream 用後処理ライブラリ
@@ -214,6 +252,9 @@ sudo nvpmodel -m 2 && sudo jetson_clocks     # 性能モードを最大に
 | `num_classes` の不一致エラー | データを入れ替えたら `03_prepare_dataset.py` をやり直す（`num_classes.txt` が更新される） |
 | Jetson で FP16 だと検出が出ない / NaN | `./02_build_engine.sh --fp32` と `./03_run_deepstream.sh ... --fp32` で FP32 にする。ResNet 以外の backbone（ConvNeXt 系）は FP16 で不安定になりやすい |
 | Jetson でボックスがずれる | `export` と Jetson の入力サイズ（`--width/--height`）を揃える |
+| `30_inference.sh` の画像に枠が描かれない（mAP は高いのに） | TAO の推論は ① classmap を 0 番から数える ② `color_map` に無いクラスを描かない。`classmap_infer.txt`（1 行目 background）と色の自動設定で対処済み。古い `data/processed/` なら `03_prepare_dataset.py` をやり直す |
+| `inference.color_map=...` で `'NoneType' object has no attribute 'get'` | spec の `inference.color_map` が `null` になっている。`{}` にする |
+| `許可がありません`（Permission denied） | `chmod +x scripts/*.sh jetson/*.sh tools/*.sh sdg/*.sh` |
 | Jetson で遅い | 入力サイズを下げる（例: 480x480 で訓練し直す）、`nvpmodel -m 2` を確認、`jtop` で温度を確認 |
 
 ## TAO 7 のエージェント方式について

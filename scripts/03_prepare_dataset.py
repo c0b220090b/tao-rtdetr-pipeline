@@ -6,6 +6,7 @@
     images/train/, images/val/        画像（ハードリンク。別ドライブならコピー）
     annotations/train.json, val.json  COCO 形式のアノテーション
     classmap.txt                      クラス名（1 行 1 クラス、ID 順）
+    classmap_infer.txt                推論用（1 行目が background。TAO の inference が 0 番から数えるため）
     num_classes.txt                   spec の dataset.num_classes に入れる値（クラス数 + 1）
 
 入力は 3 通り:
@@ -125,6 +126,8 @@ class Builder:
                     "categories": self.categories}
             (ann_dir / f"{split}.json").write_text(json.dumps(coco, ensure_ascii=False))
         (out_dir / "classmap.txt").write_text("\n".join(self.class_names) + "\n")
+        # TAO の推論（inference）は classmap を 0 番から数えるので、0 番に background を入れたものを別に作る
+        (out_dir / "classmap_infer.txt").write_text("\n".join(["background", *self.class_names]) + "\n")
         (out_dir / "num_classes.txt").write_text(f"{len(self.class_names) + 1}\n")
 
     def report(self):

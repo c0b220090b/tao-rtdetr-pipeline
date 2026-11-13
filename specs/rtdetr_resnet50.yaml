@@ -25,7 +25,9 @@ dataset:
   infer_data_sources:
     image_dir:
       - /workspace/data/processed/images/val
-    classmap: /workspace/data/processed/classmap.txt
+    # 推論用のクラス名一覧。TAO は 1 行目を 0 番として読むので、1 行目が background のものを使う
+    # （classmap.txt を使うと、1 番以降のクラスの検出がすべて捨てられてしまう）
+    classmap: /workspace/data/processed/classmap_infer.txt
   num_classes: 2                 # 実行時に data/processed/num_classes.txt の値で上書き
   batch_size: 4                  # 1GPU あたり
   workers: 8
@@ -88,6 +90,10 @@ inference:
   input_width: 640
   input_height: 640
   outline_width: 3
+  # 枠の色（クラス名: 色）。ここに無いクラスは画像に描かれない（TAO の仕様）。
+  # 30_inference.sh が classmap.txt から自動で埋めるので、普段は空のままでよい。
+  # ※ 空の {} にしておく必要がある（null のままだとコマンドラインから上書きできない）
+  color_map: {}
 
 export:
   checkpoint: "???"
